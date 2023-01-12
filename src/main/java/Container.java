@@ -36,7 +36,7 @@ public class Container {
 
     private Object getInterfaceInstance(Class<?> c) throws RegistryException {
         Class<?> impl = implementations.get(c);
-        if (impl == null && impl.isAnnotationPresent(Default.class)) {
+        if (impl == null && c.isAnnotationPresent(Default.class)) {
             impl = c.getAnnotation(Default.class).value();
         } else
             throw new RegistryException("No implementation registered for interface: " + c.getName());
