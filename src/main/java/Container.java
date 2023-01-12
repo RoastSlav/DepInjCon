@@ -16,6 +16,7 @@ public class Container {
     }
 
     public <T> T getInstance(Class<T> type) throws Exception {
+        //TODO check if the implementation of an interface has changed and throw an error if it has
         T instance = (T) instances.get(type.getName());
         if (instance != null)
             return instance;
@@ -48,6 +49,7 @@ public class Container {
     }
 
     public void registerImplementation(Class c, Class subClass) throws Exception {
+        //TODO dont create instance
         Object instance = getInstance(subClass);
         injectFieldsIntoInstance(instance);
         instances.put(c.getName(), instance);
@@ -55,6 +57,11 @@ public class Container {
 
     private <T> T createInstance(Class<T> type) throws Exception {
         T instance = null;
+        //TODO if there are more than one constructor with Inject annotation, throw an error
+        //TODO break up the method
+        //one for the constructor
+        //one for parameters
+        //one for the instance
         Constructor<T>[] declaredConstructors = (Constructor<T>[]) type.getDeclaredConstructors();
         for (Constructor<T> constructor : declaredConstructors) {
             if (constructor.isAnnotationPresent(Inject.class)) {
@@ -83,20 +90,21 @@ public class Container {
 
     private void injectFieldsIntoInstance(Object instance) throws Exception {
         for (Field field : instance.getClass().getDeclaredFields()) {
-            if (field.isAnnotationPresent(Inject.class)) {
-                field.setAccessible(true);
-                if (!field.isAnnotationPresent(Named.class)) {
-                    Object inject = getInstance(field.getType());
-                    field.set(instance, inject);
-                    continue;
-                }
+            if (!field.isAnnotationPresent(Inject.class))
+               continue;
 
-                String value = field.getAnnotation(Named.class).value();
-                if (value == null || value.isEmpty())
-                    value = field.getName();
-                Object inject = getInstance(value);
+            field.setAccessible(true);
+            if (!field.isAnnotationPresent(Named.class)) {
+                Object inject = getInstance(field.getType());
                 field.set(instance, inject);
+                continue;
             }
+
+            String value = field.getAnnotation(Named.class).value();
+            if (value == null || value.isEmpty())
+                value = field.getName();
+            Object inject = getInstance(value);
+            field.set(instance, inject);
         }
     }
 }
