@@ -60,7 +60,7 @@ public class Container {
         instances.put(c.getName(), instance);
     }
 
-    public void registerImplementation(Class c, Class subClass) throws Exception {
+    public void registerImplementation(Class c, Class subClass) {
         implementations.put(c, subClass);
     }
 
@@ -105,7 +105,7 @@ public class Container {
             instance = constructor.newInstance(params);
             injectFieldsIntoInstance(instance);
         } catch (RegistryException e) {
-                throw new RegistryException("Failed to inject the fields into the instance", e);
+            throw new RegistryException("Failed to inject the fields into the instance", e);
         } catch (Exception e) {
             throw new RegistryException("Failed to create instance for object: " + type.getName(), e);
         }
@@ -120,15 +120,19 @@ public class Container {
         return instance;
     }
 
-    private void injectFieldsIntoInstance(Object instance) throws RegistryException, IllegalAccessException {
+    private void injectFieldsIntoInstance(Object instance) throws RegistryException {
         for (Field field : instance.getClass().getDeclaredFields()) {
             if (!field.isAnnotationPresent(Inject.class))
-               continue;
+                continue;
 
             field.setAccessible(true);
             if (!field.isAnnotationPresent(Named.class)) {
                 Object inject = getInstance(field.getType());
-                field.set(instance, inject);
+                try {
+                    field.set(instance, inject);
+                } catch (IllegalAccessException e) {
+                    throw new RegistryException("Failed to inject field: " + field.getName(), e);
+                }
                 continue;
             }
 
@@ -136,7 +140,11 @@ public class Container {
             if (value == null || value.isEmpty())
                 value = field.getName();
             Object inject = getInstance(value);
-            field.set(instance, inject);
+            try {
+                field.set(instance, inject);
+            } catch (IllegalAccessException e) {
+                throw new RegistryException("Failed to inject field: " + field.getName(), e);
+            }
         }
     }
 }
