@@ -43,3 +43,29 @@ class FSI implements Initializer {
         email = "mailto:" + email;
     }
 }
+
+class G {
+    @Inject
+    H hField;
+}
+
+class H {
+    @Inject
+    G gField;
+}
+
+class I {
+    @Lazy
+    @Inject
+    A aField;
+}
+
+class J {
+    @Inject
+    @Named
+    int anInt;
+
+    @Inject
+    @Named("counter")
+    double aDouble;
+}

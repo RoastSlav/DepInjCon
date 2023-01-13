@@ -4,13 +4,17 @@ import static org.junit.Assert.*;
 import org.junit.*;
 
 import java.awt.*;
+import java.util.Properties;
 
 public class MainTest {
     Container r;
 
     @Before
     public void init() {
-        r = new Container();
+        Properties properties = new Properties();
+        properties.put("counter", 2.4);
+        properties.put("anInt", 5);
+        r = new Container(properties);
     }
 
     @Test
@@ -89,6 +93,34 @@ public class MainTest {
         assertNotNull(inst);
         assertNotNull(inst.email);
         assertEquals(inst.email, "mailto:" + email);
+    }
+
+    @Test
+    public void testCircularDependency() throws Exception {
+        assertThrows(RegistryException.class, () -> {
+            r.getInstance(H.class);
+        });
+    }
+
+    @Test
+    public void testLazyLoadingNotCreating() throws Exception {
+        I h = r.getInstance(I.class);
+        assertNull(h.aField);
+    }
+
+    @Test
+    public void testLazyLoadingCreatingWhenNeeded() throws Exception {
+        fail();
+        I h = r.getInstance(I.class);
+        r.getInstance(A.class);
+        assertNotNull(h.aField);
+    }
+
+    @Test
+    public void testPrimitiveInjection() throws RegistryException {
+        J j = r.getInstance(J.class);
+        assertEquals(j.aDouble, 2.4, 0);
+        assertEquals(j.anInt, 5, 0);
     }
 
 //    @Test

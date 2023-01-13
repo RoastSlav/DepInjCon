@@ -1,11 +1,21 @@
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Properties;
 
 public class Container {
     private final Map<String, Object> instances = new HashMap<>();
     private final Map<Class<?>, Class<?>> implementations = new HashMap<>();
+    private final Properties properties = new Properties();
+
+    public Container() {
+    }
+
+    public Container(Properties properties) {
+        this.properties.putAll(properties);
+    }
 
     public Object getInstance(String key) throws RegistryException {
         Object instance = instances.get(key);
@@ -15,12 +25,16 @@ public class Container {
     }
 
     public <T> T getInstance(Class<T> type) throws RegistryException {
+        return getInstance(type, new HashSet<>());
+    }
+
+    private <T> T getInstance(Class<T> type, HashSet<Class<?>> visited) throws RegistryException {
         T instance = (T) instances.get(type.getName());
         if (instance == null) {
             if (type.isInterface())
                 return (T) getInterfaceInstance(type);
 
-            instance = (T) createInstance(type);
+            instance = (T) createInstance(type, visited);
             instances.put(type.getName(), instance);
             return instance;
         }
@@ -41,22 +55,22 @@ public class Container {
         } else
             throw new RegistryException("No implementation registered for interface: " + c.getName());
 
-        Object instance = getInstance(impl);
+        Object instance = getInstance(impl, new HashSet<>());
         instances.put(c.getName(), instance);
         return instance;
     }
 
     public void decorateInstance(Object o) throws Exception {
-        injectFieldsIntoInstance(o);
+        injectFieldsIntoInstance(o, new HashSet<>());
     }
 
     public void registerInstance(String key, Object instance) throws Exception {
-        injectFieldsIntoInstance(instance);
+        injectFieldsIntoInstance(instance, new HashSet<>());
         instances.put(key, instance);
     }
 
     public void registerInstance(Class c, Object instance) throws Exception {
-        injectFieldsIntoInstance(instance);
+        injectFieldsIntoInstance(instance, new HashSet<>());
         instances.put(c.getName(), instance);
     }
 
@@ -97,13 +111,13 @@ public class Container {
         return params;
     }
 
-    private <T> Object createInstance(Class<T> type) throws RegistryException {
+    private <T> Object createInstance(Class<?> type, HashSet<Class<?>> visited) throws RegistryException {
         Object instance;
         try {
             Constructor<?> constructor = getConstructor(type);
             Object[] params = getConstructorParams(constructor);
             instance = constructor.newInstance(params);
-            injectFieldsIntoInstance(instance);
+            injectFieldsIntoInstance(instance, visited);
         } catch (RegistryException e) {
             throw new RegistryException("Failed to inject the fields into the instance", e);
         } catch (Exception e) {
@@ -120,31 +134,61 @@ public class Container {
         return instance;
     }
 
-    private void injectFieldsIntoInstance(Object instance) throws RegistryException {
+    private void injectFieldsIntoInstance(Object instance, HashSet<Class<?>> visited) throws RegistryException {
+        if (visited.contains(instance.getClass()))
+            throw new RegistryException("Circular dependency detected in class: " + instance.getClass().getName());
+        visited.add(instance.getClass());
+
         for (Field field : instance.getClass().getDeclaredFields()) {
             if (!field.isAnnotationPresent(Inject.class))
                 continue;
 
             field.setAccessible(true);
-            if (!field.isAnnotationPresent(Named.class)) {
-                Object inject = getInstance(field.getType());
-                try {
-                    field.set(instance, inject);
-                } catch (IllegalAccessException e) {
-                    throw new RegistryException("Failed to inject field: " + field.getName(), e);
-                }
+            if (field.getType().isPrimitive()) {
+                setPrimitiveFieldValue(instance, field);
                 continue;
             }
+            setObjectFieldValue(instance, field, visited);
+        }
+    }
 
-            String value = field.getAnnotation(Named.class).value();
-            if (value == null || value.isEmpty())
-                value = field.getName();
-            Object inject = getInstance(value);
+    private void setPrimitiveFieldValue(Object instance, Field field) throws RegistryException {
+        Object value = properties.get(field.getName());
+        if (field.isAnnotationPresent(Named.class)) {
+            String annotationValue = field.getAnnotation(Named.class).value();
+            if (annotationValue != null && !annotationValue.isEmpty())
+                value = properties.get(annotationValue);
+        }
+
+        if (value == null)
+            throw new RegistryException("No value found for primitive field: " + field.getName());
+
+        try {
+            field.set(instance, value);
+        } catch (IllegalAccessException e) {
+            throw new RegistryException("Failed to set value for primitive field: " + field.getName(), e);
+        }
+    }
+
+    private void setObjectFieldValue(Object instance, Field field, HashSet<Class<?>> visited) throws RegistryException {
+        if (!field.isAnnotationPresent(Named.class)) {
+            Object inject = getInstance(field.getType(), visited);
             try {
                 field.set(instance, inject);
             } catch (IllegalAccessException e) {
                 throw new RegistryException("Failed to inject field: " + field.getName(), e);
             }
+            return;
+        }
+
+        String value = field.getAnnotation(Named.class).value();
+        if (value == null || value.isEmpty())
+            value = field.getName();
+        Object inject = getInstance(value);
+        try {
+            field.set(instance, inject);
+        } catch (IllegalAccessException e) {
+            throw new RegistryException("Failed to inject field: " + field.getName(), e);
         }
     }
 }
