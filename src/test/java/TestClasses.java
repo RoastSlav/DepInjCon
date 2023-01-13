@@ -69,3 +69,14 @@ class J {
     @Named("counter")
     double aDouble;
 }
+
+class K {
+    String name;
+    A aField;
+
+    @Inject
+    public K(@Named String name, A aField) {
+        this.name = name;
+        this.aField = aField;
+    }
+}

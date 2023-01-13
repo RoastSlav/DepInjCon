@@ -14,6 +14,7 @@ public class MainTest {
         Properties properties = new Properties();
         properties.put("counter", 2.4);
         properties.put("anInt", 5);
+        properties.put("name", "John");
         r = new Container(properties);
     }
 
@@ -121,6 +122,13 @@ public class MainTest {
         J j = r.getInstance(J.class);
         assertEquals(j.aDouble, 2.4, 0);
         assertEquals(j.anInt, 5, 0);
+    }
+
+    @Test
+    public void testNamedConstructorParameterInjection() throws RegistryException {
+        K k = r.getInstance(K.class);
+        assertSame(k.name, "John");
+        assertNotNull(k.aField);
     }
 
 //    @Test

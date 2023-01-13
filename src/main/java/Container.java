@@ -1,5 +1,6 @@
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Parameter;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -18,7 +19,11 @@ public class Container {
     }
 
     public Object getInstance(String key) throws RegistryException {
-        Object instance = instances.get(key);
+        Object instance = properties.get(key);
+        if (instance != null)
+            return instance;
+
+        instance = instances.get(key);
         if (instance == null)
             throw new RegistryException("No instance registered for key: " + key);
         return instance;
@@ -98,10 +103,16 @@ public class Container {
     }
 
     private Object[] getConstructorParams(Constructor<?> constructor) throws RegistryException {
-        Class<?>[] parameterTypes = constructor.getParameterTypes();
+        Parameter[] parameterTypes = constructor.getParameters();
         Object[] params = new Object[parameterTypes.length];
         for (int i = 0; i < parameterTypes.length; i++) {
-            Class<?> parameterType = parameterTypes[i];
+            if (parameterTypes[i].isAnnotationPresent(Named.class)) {
+                String name = parameterTypes[i].getName();
+                params[i] = getInstance(name);
+                continue;
+            }
+
+            Class<?> parameterType = parameterTypes[i].getType();
             try {
                 params[i] = getInstance(parameterType);
             } catch (Exception e) {
