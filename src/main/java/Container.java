@@ -1,5 +1,6 @@
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -9,21 +10,18 @@ import java.util.Properties;
 public class Container {
     private final Map<String, Object> instances = new HashMap<>();
     private final Map<Class<?>, Class<?>> implementations = new HashMap<>();
-    private final Properties properties = new Properties();
 
     public Container() {
     }
 
     public Container(Properties properties) {
-        this.properties.putAll(properties);
+        properties.forEach((key, value) -> {
+            instances.put(value.getClass().getName(), value);
+        });
     }
 
     public Object getInstance(String key) throws RegistryException {
-        Object instance = properties.get(key);
-        if (instance != null)
-            return instance;
-
-        instance = instances.get(key);
+        Object instance = instances.get(key);
         if (instance == null)
             throw new RegistryException("No instance registered for key: " + key);
         return instance;
@@ -36,28 +34,22 @@ public class Container {
     private <T> T getInstance(Class<T> type, HashSet<Class<?>> visited) throws RegistryException {
         T instance = (T) instances.get(type.getName());
         if (instance == null) {
-            if (type.isInterface())
+            if (type.isInterface() || Modifier.isAbstract(type.getModifiers()))
                 return (T) getInterfaceInstance(type);
 
             instance = (T) createInstance(type, visited);
             instances.put(type.getName(), instance);
             return instance;
         }
-
-        if (type.isInterface()) {
-            Class<?> impl = implementations.get(type);
-            if (impl != null && !impl.equals(instance.getClass())) {
-                throw new RegistryException("Implementation of " + type.getName() + " has changed");
-            }
-        }
         return instance;
     }
 
     private Object getInterfaceInstance(Class<?> c) throws RegistryException {
         Class<?> impl = implementations.get(c);
-        if (impl == null && c.isAnnotationPresent(Default.class)) {
+        if (impl == null && c.isAnnotationPresent(Default.class))
             impl = c.getAnnotation(Default.class).value();
-        } else
+
+        if (impl == null)
             throw new RegistryException("No implementation registered for interface: " + c.getName());
 
         Object instance = getInstance(impl, new HashSet<>());
@@ -79,7 +71,13 @@ public class Container {
         instances.put(c.getName(), instance);
     }
 
-    public void registerImplementation(Class c, Class subClass) {
+    public void registerImplementation(Class c, Class subClass) throws RegistryException {
+        if (c.isInterface()) {
+            Class<?> impl = implementations.get(c);
+            if (impl != null && !impl.equals(subClass.getClass())) {
+                throw new RegistryException("Implementation of " + subClass.getName() + " has changed");
+            }
+        }
         implementations.put(c, subClass);
     }
 
@@ -88,11 +86,13 @@ public class Container {
 
         Constructor<?>[] declaredConstructors = c.getDeclaredConstructors();
         for (Constructor<?> declaredConstructor : declaredConstructors) {
-            if (constructor == null && declaredConstructor.isAnnotationPresent(Inject.class)) {
-                constructor = declaredConstructor;
-            } else if (constructor != null && declaredConstructor.isAnnotationPresent(Inject.class)) {
-                throw new RegistryException("More than one constructor annotated with @Inject");
-            }
+            if (!declaredConstructor.isAnnotationPresent(Inject.class))
+                continue;
+
+            if (constructor != null)
+                throw new RegistryException("Multiple constructors annotated with @Inject");
+
+            constructor = declaredConstructor;
         }
 
         if (constructor == null)
@@ -148,6 +148,7 @@ public class Container {
     private void injectFieldsIntoInstance(Object instance, HashSet<Class<?>> visited) throws RegistryException {
         if (visited.contains(instance.getClass()))
             throw new RegistryException("Circular dependency detected in class: " + instance.getClass().getName());
+
         visited.add(instance.getClass());
 
         for (Field field : instance.getClass().getDeclaredFields()) {
@@ -155,7 +156,7 @@ public class Container {
                 continue;
 
             field.setAccessible(true);
-            if (field.getType().isPrimitive()) {
+            if (checkForPrimitive(field.getType())) {
                 setPrimitiveFieldValue(instance, field);
                 continue;
             }
@@ -163,12 +164,22 @@ public class Container {
         }
     }
 
+    private boolean checkForPrimitive(Class<?> type) {
+        return type.isPrimitive() ||
+                type.equals(String.class) ||
+                type.equals(Integer.class) ||
+                type.equals(Long.class) ||
+                type.equals(Double.class) ||
+                type.equals(Float.class) ||
+                type.equals(Boolean.class);
+    }
+
     private void setPrimitiveFieldValue(Object instance, Field field) throws RegistryException {
-        Object value = properties.get(field.getName());
+        Object value = null;
         if (field.isAnnotationPresent(Named.class)) {
             String annotationValue = field.getAnnotation(Named.class).value();
             if (annotationValue != null && !annotationValue.isEmpty())
-                value = properties.get(annotationValue);
+                value = instances.get(annotationValue);
         }
 
         if (value == null)
