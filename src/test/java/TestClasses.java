@@ -2,7 +2,9 @@
 
 interface AI { }
 
-class A implements AI { }
+class A implements AI {
+    public void work() { }
+}
 
 class B {
     @Inject
@@ -47,11 +49,15 @@ class FSI implements Initializer {
 class G {
     @Inject
     H hField;
+
+    public void work() { }
 }
 
 class H {
     @Inject
     G gField;
+
+    public void work() { }
 }
 
 class I {

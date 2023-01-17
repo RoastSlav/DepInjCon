@@ -99,9 +99,10 @@ public class MainTest {
 
     @Test
     public void testCircularDependency() throws Exception {
-        assertThrows(RegistryException.class, () -> {
-            r.getInstance(H.class);
-        });
+        G inst = r.getInstance(G.class);
+        assertNotSame(inst.hField, inst.hField.gField.hField);
+        inst.hField.gField.hField.work();
+        assertSame(inst.hField, inst.hField.gField.hField);
     }
 
     @Test
@@ -113,8 +114,9 @@ public class MainTest {
     @Test
     public void testLazyLoadingCreatingWhenNeeded() throws Exception {
         I h = r.getInstance(I.class);
-        A aFromObject = h.aField;
-        assertNotNull(aFromObject);
+        h.aField.work();
+        A aFromContainer = r.getInstance(A.class);
+        assertEquals(aFromContainer, h.aField);
     }
 
     @Test

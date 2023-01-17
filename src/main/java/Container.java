@@ -151,19 +151,17 @@ public class Container {
     }
 
     private void setLazyObject(Object instance, Field field) throws RegistryException {
-        Object mock = Mockito.mock(field.getType(), new Answer() {
-            @Override
-            public Object answer(InvocationOnMock invocationOnMock) throws Throwable {
-                Named named = field.getDeclaredAnnotation(Named.class);
-                Object value;
-                if (named == null)
-                    value = getInstance(field.getType());
-                else if (named.value() != null && !named.value().isEmpty())
-                    value = getInstance(named.value());
-                else
-                    value = getInstance(field.getName());
-                return invocationOnMock.getMethod().invoke(value, invocationOnMock.getArguments());
-            }
+        Object mock = Mockito.mock(field.getType(), invocationOnMock -> {
+            Named named = field.getDeclaredAnnotation(Named.class);
+            Object value;
+            if (named == null)
+                value = getInstance(field.getType());
+            else if (named.value() != null && !named.value().isEmpty())
+                value = getInstance(named.value());
+            else
+                value = getInstance(field.getName());
+            field.set(instance, value);
+            return invocationOnMock.getMethod().invoke(value, invocationOnMock.getArguments());
         });
 
         try {
@@ -175,12 +173,14 @@ public class Container {
     }
 
     private void injectFieldsIntoInstance(Object instance, HashSet<Class<?>> visited) throws RegistryException {
-        if (visited.contains(instance.getClass()))
-            throw new RegistryException("Circular dependency detected in class: " + instance.getClass().getName());
-
-        visited.add(instance.getClass());
-
         for (Field field : instance.getClass().getDeclaredFields()) {
+            if (visited.contains(instance.getClass())) {
+                setLazyObject(instance, field);
+                continue;
+            }
+
+            visited.add(instance.getClass());
+
             if (!field.isAnnotationPresent(Inject.class))
                 continue;
 
