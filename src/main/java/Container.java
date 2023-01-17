@@ -1,3 +1,7 @@
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -7,6 +11,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 
+@SuppressWarnings({"unchecked"})
 public class Container {
     private final Map<String, Object> instances = new HashMap<>();
     private final Map<Class<?>, Class<?>> implementations = new HashMap<>();
@@ -15,8 +20,8 @@ public class Container {
     }
 
     public Container(Properties properties) {
-        properties.forEach((key, value) -> {
-            instances.put(value.getClass().getName(), value);
+        properties.forEach((k,v) -> {
+            instances.put((String) k, v);
         });
     }
 
@@ -71,10 +76,10 @@ public class Container {
         instances.put(c.getName(), instance);
     }
 
-    public void registerImplementation(Class c, Class subClass) throws RegistryException {
+    public void registerImplementation(Class<?> c, Class<?> subClass) throws RegistryException {
         if (c.isInterface()) {
             Class<?> impl = implementations.get(c);
-            if (impl != null && !impl.equals(subClass.getClass())) {
+            if (impl != null && !impl.equals(subClass)) {
                 throw new RegistryException("Implementation of " + subClass.getName() + " has changed");
             }
         }
@@ -122,7 +127,7 @@ public class Container {
         return params;
     }
 
-    private <T> Object createInstance(Class<?> type, HashSet<Class<?>> visited) throws RegistryException {
+    private Object createInstance(Class<?> type, HashSet<Class<?>> visited) throws RegistryException {
         Object instance;
         try {
             Constructor<?> constructor = getConstructor(type);
@@ -145,6 +150,30 @@ public class Container {
         return instance;
     }
 
+    private void setLazyObject(Object instance, Field field) throws RegistryException {
+        Object mock = Mockito.mock(field.getType(), new Answer() {
+            @Override
+            public Object answer(InvocationOnMock invocationOnMock) throws Throwable {
+                Named named = field.getDeclaredAnnotation(Named.class);
+                Object value;
+                if (named == null)
+                    value = getInstance(field.getType());
+                else if (named.value() != null && !named.value().isEmpty())
+                    value = getInstance(named.value());
+                else
+                    value = getInstance(field.getName());
+                return invocationOnMock.getMethod().invoke(value, invocationOnMock.getArguments());
+            }
+        });
+
+        try {
+            field.setAccessible(true);
+            field.set(instance, mock);
+        } catch (IllegalAccessException e) {
+            throw new RegistryException("Failed to set lazy object", e);
+        }
+    }
+
     private void injectFieldsIntoInstance(Object instance, HashSet<Class<?>> visited) throws RegistryException {
         if (visited.contains(instance.getClass()))
             throw new RegistryException("Circular dependency detected in class: " + instance.getClass().getName());
@@ -156,6 +185,12 @@ public class Container {
                 continue;
 
             field.setAccessible(true);
+
+            if (field.isAnnotationPresent(Lazy.class)) {
+                setLazyObject(instance, field);
+                continue;
+            }
+
             if (checkForPrimitive(field.getType())) {
                 setPrimitiveFieldValue(instance, field);
                 continue;
@@ -180,6 +215,8 @@ public class Container {
             String annotationValue = field.getAnnotation(Named.class).value();
             if (annotationValue != null && !annotationValue.isEmpty())
                 value = instances.get(annotationValue);
+            else
+                value = instances.get(field.getName());
         }
 
         if (value == null)

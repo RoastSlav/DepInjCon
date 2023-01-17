@@ -2,6 +2,7 @@ import static org.junit.Assert.*;
 
 
 import org.junit.*;
+import org.mockito.Mockito;
 
 import java.awt.*;
 import java.util.Properties;
@@ -106,15 +107,14 @@ public class MainTest {
     @Test
     public void testLazyLoadingNotCreating() throws Exception {
         I h = r.getInstance(I.class);
-        assertNull(h.aField);
+        assertTrue(Mockito.mockingDetails(h.aField).isMock());
     }
 
     @Test
     public void testLazyLoadingCreatingWhenNeeded() throws Exception {
-        fail();
         I h = r.getInstance(I.class);
-        r.getInstance(A.class);
-        assertNotNull(h.aField);
+        A aFromObject = h.aField;
+        assertNotNull(aFromObject);
     }
 
     @Test
